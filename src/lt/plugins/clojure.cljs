@@ -676,13 +676,31 @@
                                                          :create try-connect})
                                       command info :only editor))))
 
+(def fs (js/require "fs"))
+(def url (js/require "url"))
+(def Zip (js/require (plugins/local-module "Clojure" "adm-zip")))
+
+(defn file-from-jar [file]
+  (let [file (.-pathname (.parse url file))
+        [zip-file inner-file] (string/split file "!/")
+        content (.readAsText (Zip. zip-file) inner-file)
+        extracted-file (str "/tmp/" (files/basename inner-file))]
+    (.writeFileSync fs extracted-file content)
+    extracted-file))
+
+(defn jump-to-definition [editor file pos]
+  (let [file (if (.contains file "jar!")
+               (file-from-jar file)
+               file)]
+    (object/raise lt.objs.jump-stack/jump-stack :jump-stack.push! editor file pos)))
+
 (behavior ::finish-jump-to-definition
           :triggers #{:editor.clj.doc
                       :editor.cljs.doc}
           :reaction (fn [editor {:keys [file line] :as res}]
                       (when (= :jump (:result-type res))
                         (if (and res file line)
-                          (object/raise lt.objs.jump-stack/jump-stack :jump-stack.push! editor file {:line (dec line) :ch 0})
+                          (jump-to-definition editor file {:line (dec line) :ch 0})
                           (notifos/set-msg! "Definition not found" {:class "error"})))))
 
 ;;****************************************************
